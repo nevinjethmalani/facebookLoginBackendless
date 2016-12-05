@@ -12,11 +12,80 @@ import UIKit
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
     var window: UIWindow?
-
+    
+    // TestSocial : Info.plist -> FacebookAppID: 1187550204598587 [Back­e­n­d­l­e­s­s­F­S­D­K­L­ogin]
+    let APP_ID = "11F87440-6823-01F4-FF7E-A899467C0400"
+    let SECRET_KEY = "8AF8ACF5-47EA-B117-FFD4-D96695A8B100"
+    let VERSION_NUM = "v1"
+    
+    var backendless = Backendless.sharedInstance()
+    var fault : Fault?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplicationLaunchOptionsKey: Any]?) -> Bool {
         // Override point for customization after application launch.
-        return true
+        
+        // Override point for customization after application launch.
+        
+        //DebLog.setIsActive(true)
+        
+        backendless!.initApp(APP_ID, secret:SECRET_KEY, version:VERSION_NUM)
+        //backendless!.hostURL = "http://api.backendless.com"
+        
+        return FBSDKApplicationDelegate.sharedInstance().application(application, didFinishLaunchingWithOptions: launchOptions)
+        
+    }
+    
+    @available(iOS 9.0, *)
+    func application(_ app: UIApplication, open url: URL, options: [UIApplicationOpenURLOptionsKey : Any] = [:]) -> Bool {
+        // no equiv. notification. return NO if the application can't open for some reason
+        
+        
+        
+        let sourceApplication = options[UIApplicationOpenURLOptionsKey.sourceApplication] as! String
+        let annotation = options[UIApplicationOpenURLOptionsKey.annotation]
+        
+        print("AppDelegate (iOS9 >) -> application:openURL: \(url.scheme), [\(sourceApplication) -> \(annotation)]")
+        
+        let result = FBSDKApplicationDelegate.sharedInstance().application(app, open: url as URL!, sourceApplication: sourceApplication, annotation: annotation)
+        if result {
+            
+            let token = FBSDKAccessToken.current()
+            if token == nil {
+                print("ERROR: token = \(token)")
+                return false
+            }
+            
+            let fieldsMapping = [
+                "id" : "id",
+                "name" : "name",
+                "first_name": "firstName",
+                "last_name" : "lastName",
+                "gender": "gender",
+                "email": "email"
+            ]
+            
+            if let permissions = token?.value(forKey: "permissions") {
+                print("ACCOUNT PERMISSIONS: \(permissions)")
+            }
+            
+            backendless!.userService.login(
+                withFacebookSDK: token,
+                permissions: ["user_friends", "email", "public_profile", "contact_email"],
+                fieldsMapping: fieldsMapping,
+                response: { (user: BackendlessUser?) -> Void in
+                    print("user: \(user!.email)\n[\(user!.retrieveProperties())]")
+                    
+                    if user!.isUserRegistered() {
+                        print("NEW REGISTATION")
+                    }
+                    self.validUserTokenSync()
+            },
+                error: { (fault: Fault?) -> Void in
+                    print("Server reported an error: \(fault)")
+            })
+        }
+        
+        return result
     }
 
     func applicationWillResignActive(_ application: UIApplication) {
@@ -40,6 +109,35 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func applicationWillTerminate(_ application: UIApplication) {
         // Called when the application is about to terminate. Save data if appropriate. See also applicationDidEnterBackground:.
     }
+    
+    func validUserTokenSync() {
+        
+        Types.tryblock({ () -> Void in
+            
+            let result = self.backendless!.userService.isValidUserToken() //as NSNumber
+            print("isValidUserToken (SYNC): \((result! as NSNumber).boolValue)")
+        },
+                       
+                       catchblock: { (exception) -> Void in
+                        self.fault = exception as? Fault
+                        print("Server reported an error (SYNC): \(self.fault!)")
+        }
+        )
+    }
+    
+    func validUserTokenAsync() {
+        
+        backendless!.userService.isValidUserToken(
+            { ( result : AnyObject?) -> () in
+                print("isValidUserToken (ASYNC): \((result as! NSNumber).boolValue)")
+        },
+            error: { ( fault : Fault?) -> () in
+                self.fault = fault
+                print("Server reported an error (ASYNC): \(fault)")
+        }
+        )
+    }
+
 
 
 }
